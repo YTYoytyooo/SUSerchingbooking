@@ -1,0 +1,2 @@
+# Browser login and initial setup; uses installed Microsoft Edge.
+playwright==1.63.0
