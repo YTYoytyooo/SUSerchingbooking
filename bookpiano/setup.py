@@ -33,7 +33,7 @@ def setup(root):
             print("登录后请在网页筛选致诚大会议室，选择今天日期，正常查看一次预约。")
             print("程序只观察网页请求，不额外试接口，也不调用上次返回 404 的地址。")
             if input("按 Enter 打开，输入 q 退出：").strip().lower() == "q":
-                return 0
+                return 2
             core.write_json(root / ".setup_state.json", {"last_started_at": now.isoformat()})
             capture = Capture(config["room_name"])
             with browser_session(root, interactive=True, capture=capture) as (context, page, token):

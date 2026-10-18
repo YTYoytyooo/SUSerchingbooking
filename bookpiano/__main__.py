@@ -55,14 +55,17 @@ def demo(root):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="致诚大会议室本地预约导出")
-    parser.add_argument("command", choices=["init", "update", "update-local", "status", "demo", "check-ready", "setup", "configure", "connect-feishu"])
+    parser.add_argument("command", choices=["menu", "wizard", "init", "update", "update-local", "status", "demo", "check-ready", "setup", "configure", "connect-feishu"])
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent)
     parser.add_argument("--force", action="store_true", help="当天已成功也刷新；仍遵守每天两次及十分钟间隔")
     args = parser.parse_args(argv)
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=True)
     try:
-        if args.command == "init":
+        if args.command in {"menu", "wizard"}:
+            from .console import menu, wizard
+            return (menu if args.command == "menu" else wizard)(root)
+        elif args.command == "init":
             core.load_config(root)
             if not (root / "查看预约.html").exists():
                 core.write_bytes(root / "查看预约.html", core.html_text().encode("utf-8"))

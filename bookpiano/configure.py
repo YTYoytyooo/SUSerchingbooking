@@ -24,6 +24,7 @@ def normalize_target_url(value):
 
 
 def configure(root):
+    saved = False
     window = tk.Tk()
     window.title("会议室自动更新 · 本机配置")
     window.geometry("720x640")
@@ -59,6 +60,7 @@ def configure(root):
     ttk.Checkbutton(frame, text="同意在本机保存凭据，用于正常登录学校及更新目标飞书表格", variable=accepted).grid(row=9, column=0, columnspan=2, sticky="w")
 
     def save():
+        nonlocal saved
         if not accepted.get():
             messagebox.showinfo("需要确认", "请勾选本机保存和用途确认。", parent=window)
             return
@@ -102,6 +104,7 @@ def configure(root):
             for name in ["password", "app_secret"]:
                 fields[name].set("")
             messagebox.showinfo("已保存", "本机凭据已保存。下一步运行“首次配置”，确认当前有效预约查询。", parent=window)
+            saved = True
             window.destroy()
         except (core.LocalError, core.FetchError, OSError, BlockingIOError):
             messagebox.showerror("保存失败", "无法保存配置，或已有任务运行。请稍后重试；不要把密码粘贴到聊天。", parent=window)
@@ -109,4 +112,4 @@ def configure(root):
     ttk.Button(frame, text="保存到本机", command=save).grid(row=10, column=0, columnspan=2, sticky="e", pady=20)
     frame.columnconfigure(1, weight=1)
     window.mainloop()
-    return 0
+    return 0 if saved else 2

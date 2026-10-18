@@ -2,6 +2,7 @@
     [string]$PythonPath,
     [switch]$Remove,
     [switch]$ExportOnly,
+    [switch]$IfMissing,
     [ValidateSet('InteractiveToken','Password')]
     [string]$LogonType = 'InteractiveToken'
 )
@@ -18,6 +19,10 @@ if ($Remove) {
     return
 }
 if (-not $PythonPath) { $PythonPath = (Get-Command python -ErrorAction Stop).Source }
+if ($IfMissing -and (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue)) {
+    Write-Host '本目录已有自动更新任务，保留现有安排。需要修改时请使用高级维护。'
+    return
+}
 $PythonPath = (Resolve-Path -LiteralPath $PythonPath).Path
 if (-not $ExportOnly) {
     Push-Location -LiteralPath $root

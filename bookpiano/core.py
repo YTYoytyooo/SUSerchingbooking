@@ -298,7 +298,7 @@ def html_text(snapshot=None, error="", demo=False):
             fmt = "%H:%M" if start.date().isoformat() == day and end.date().isoformat() == day else "%m-%d %H:%M"
             body += f'<tr><td class="slot">{escape(start.strftime(fmt))} — {escape(end.strftime(fmt))}</td><td>{escape(b["title"])}</td><td>{escape(b["state"])}</td></tr>'
     if not body:
-        message = "当天暂无预约" if snapshot else "尚未完成首次配置。请运行“首次配置.cmd”，登录并核实一次当天安排。"
+        message = "当天暂无预约" if snapshot else "尚未完成首次配置。请打开“预约管理.cmd”并选择配置向导，登录并核实一次当天安排。"
         body = f'<tr><td colspan="3" class="empty">{escape(message)}</td></tr>'
     notice = f'<div class="warning">更新未完成：{escape(error)}。下方保留最近成功数据，请核对日期。</div>' if error else ""
     if demo:
