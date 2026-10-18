@@ -84,6 +84,16 @@ class ConsoleWorkflowTests(unittest.TestCase):
             self.assertIn("--force", argv)
             console.action(self.root, "update")
             self.assertNotIn("--force", run.call_args.args[1])
+            self.assertNotIn("--ignore-cooldown", run.call_args.args[1])
+            console.action(self.root, "manual-update-now")
+            self.assertEqual(run.call_args.args[1][3], "update")
+            self.assertIn("--force", run.call_args.args[1])
+            self.assertIn("--ignore-cooldown", run.call_args.args[1])
+
+    def test_option_six_requests_only_one_manual_override(self):
+        with patch("builtins.input", side_effect=["6", "", "0"]), patch.object(console, "action") as action:
+            self.assertEqual(console.menu(self.root), 0)
+            action.assert_called_once_with(self.root, "manual-update-now")
 
     def test_menu_exit_never_starts_network_work(self):
         with patch("builtins.input", return_value="0"), patch.object(console, "action") as action:

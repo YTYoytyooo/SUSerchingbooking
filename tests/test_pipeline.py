@@ -31,9 +31,55 @@ class PipelineTests(unittest.TestCase):
         self.writes += 1
         return {"verified": True}
 
-    def update(self, minute=0, publisher=None, force=False):
+    def update(self, minute=0, publisher=None, force=False, ignore_cooldown=False):
         return run_pipeline(self.root, self.fetch, publisher or self.publish,
-                            now=datetime(2026, 9, 25, 9, minute, tzinfo=core.CST), force=force)
+                            now=datetime(2026, 9, 25, 9, minute, tzinfo=core.CST), force=force,
+                            ignore_cooldown=ignore_cooldown)
+
+    def test_manual_override_skips_both_intervals_but_not_daily_cap(self):
+        self.assertEqual(self.update().status, "success")
+        self.assertEqual(self.update(1, force=True).status, "cooldown")
+        self.assertEqual((self.fetches, self.writes), (1, 1))
+        self.assertEqual(self.update(1, force=True, ignore_cooldown=True).status, "success")
+        self.assertEqual((self.fetches, self.writes), (2, 2))
+        self.assertEqual(self.update(2, force=True, ignore_cooldown=True).status, "sync_daily_limit")
+        self.assertEqual((self.fetches, self.writes), (2, 2))
+
+    def test_manual_cloud_retry_uses_saved_snapshot_without_school_query(self):
+        def fail(*_):
+            self.writes += 1
+            raise FeishuError("timeout", retryable=True)
+        self.assertEqual(self.update(publisher=fail).status, "sync_retry_pending")
+        self.assertEqual(self.update(1, force=True, ignore_cooldown=True).status, "success")
+        self.assertEqual((self.fetches, self.writes), (1, 2))
+
+    def test_override_never_unblocks_auth_failure(self):
+        core.write_json(self.root / "state.json", {"blocked": True, "blocked_kind": "auth"})
+        self.assertEqual(self.update(1, force=True, ignore_cooldown=True).status, "blocked")
+        self.assertEqual((self.fetches, self.writes), (0, 0))
+
+    def test_override_never_resets_school_daily_budget(self):
+        core.write_json(self.root / "state.json", {"attempt_date": "2026-09-25", "attempts": 2})
+        self.assertEqual(self.update(1, force=True, ignore_cooldown=True).status, "daily_limit")
+        self.assertEqual((self.fetches, self.writes), (0, 0))
+
+    def test_override_requires_explicit_manual_refresh(self):
+        with self.assertRaises(core.LocalError):
+            self.update(ignore_cooldown=True)
+        self.assertEqual((self.fetches, self.writes), (0, 0))
+
+    def test_school_retry_override_is_not_persisted_for_later_runs(self):
+        def fail(*_):
+            self.fetches += 1
+            raise core.FetchError("timeout", retryable=True, kind="network")
+        now = datetime(2026, 9, 25, 9, 0, tzinfo=core.CST)
+        self.assertEqual(core.run_update(self.root, fail, now=now).status, "retry_pending")
+        later = now.replace(minute=1)
+        self.assertEqual(core.run_update(self.root, self.fetch, now=later, force=True).status, "cooldown")
+        self.assertEqual(core.run_update(self.root, self.fetch, now=later, force=True,
+                                         ignore_cooldown=True).status, "success")
+        self.assertEqual(self.fetches, 2)
+        self.assertNotIn("ignore_cooldown", core.load_json(self.root / "state.json"))
 
     def test_success_then_reboot_calls_neither_service(self):
         self.assertEqual(self.update().status, "success")

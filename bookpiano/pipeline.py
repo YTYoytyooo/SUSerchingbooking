@@ -23,12 +23,16 @@ def client_from_credentials(root):
         raise core.LocalError("飞书应用凭据尚未正确保存。") from None
 
 
-def run_pipeline(root, fetch, publisher=None, now=None, force=False, clock=None):
+def run_pipeline(root, fetch, publisher=None, now=None, force=False, clock=None, ignore_cooldown=False):
+    if ignore_cooldown and not force:
+        raise core.LocalError("仅人工强制更新可跳过本次等待。")
     from .feishu import FeishuError, publish_snapshot
     clock = clock or ((lambda: now) if now is not None else core.now_cst)
     now = clock().astimezone(core.CST)
     try:
         with core.RunLock(root):
+            if ignore_cooldown:
+                core.log(root, now, "manual_override", "人工更新：仅本次跳过十分钟等待，保留次数限制和认证保护。")
             settings = core.load_json(root / "feishu.json", {})
             if (not settings.get("enabled") or not settings.get("verified") or not settings.get("target")
                     or settings.get("verified_fingerprint") != settings_fingerprint(settings)):
@@ -53,7 +57,7 @@ def run_pipeline(root, fetch, publisher=None, now=None, force=False, clock=None)
                 return core.Result("sync_daily_limit", "今天已达到飞书更新尝试上限，不再请求。", 2)
             if now.time() < time(5) and sync.get("attempts", 0) >= 1:
                 return core.Result("sync_reserved", "05:00 前最多发布一次，保留一次供当天定时更新。", 2)
-            if sync.get("next_retry_at") and now < datetime.fromisoformat(sync["next_retry_at"]):
+            if not ignore_cooldown and sync.get("next_retry_at") and now < datetime.fromisoformat(sync["next_retry_at"]):
                 return core.Result("cooldown", "飞书写入重试间隔不足 10 分钟。")
             state = core.load_json(root / "state.json", {})
             latest = core.load_json(root / "latest.json", {})
@@ -61,7 +65,7 @@ def run_pipeline(root, fetch, publisher=None, now=None, force=False, clock=None)
                              and not complete and state.get("replay_verified"))
             # A failed cloud write never causes another school query. A page observation needs one independent replay.
             force_source = (force and not pending_today) or not state.get("replay_verified", False)
-            result = core._update(root, fetch, now, force_source, clock)
+            result = core._update(root, fetch, now, force_source, clock, ignore_cooldown=ignore_cooldown)
             if result.status not in {"success", "already_done"}:
                 if result.status not in {"not_due", "cooldown"}:
                     core.log(root, now, result.status, result.message)
@@ -69,7 +73,7 @@ def run_pipeline(root, fetch, publisher=None, now=None, force=False, clock=None)
             snapshot = core.load_json(root / "latest.json")
             if not snapshot or snapshot.get("date") != today or clock().astimezone(core.CST).date().isoformat() != today:
                 return core.Result("rollover", "日期已经变化，本次不将旧日期写入飞书。", 2)
-            if sync.get("last_attempt_at") and (now - datetime.fromisoformat(sync["last_attempt_at"])).total_seconds() < 600:
+            if not ignore_cooldown and sync.get("last_attempt_at") and (now - datetime.fromisoformat(sync["last_attempt_at"])).total_seconds() < 600:
                 return core.Result("cooldown", "距上次飞书更新不足 10 分钟。")
             sync.update(attempts=sync.get("attempts", 0) + 1, last_attempt_at=now.isoformat(), status="writing",
                         pending_fetched_at=snapshot["fetched_at"], next_retry_at=None)

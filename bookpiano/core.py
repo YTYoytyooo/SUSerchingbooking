@@ -360,7 +360,7 @@ def _record_success(root, state, snapshot, config):
     return Result("success", f"已导出 {snapshot['date']} 的 {len(snapshot['bookings'])} 条预约。")
 
 
-def _update(root, fetch, now, force, clock):
+def _update(root, fetch, now, force, clock, ignore_cooldown=False):
     config = load_config(root)
     if not config["verified"] or not config["room_id"] or config.get("verified_fingerprint") != fingerprint(config):
         return Result("setup_required", "尚未完成首次登录和数据核对；不会访问网站。", 2)
@@ -395,11 +395,11 @@ def _update(root, fetch, now, force, clock):
     if now.time() < time(5) and state.get("attempts", 0) >= 1:
         return Result("reserved", "05:00 前最多查询一次，保留一次供当天定时更新。", 2)
     last_attempt = state.get("last_attempt_at")
-    if last_attempt:
+    if last_attempt and not ignore_cooldown:
         since = (now - datetime.fromisoformat(last_attempt)).total_seconds()
         if since < 60 * config["min_interval_minutes"]:
             return Result("cooldown", "距上次请求不足 10 分钟，不访问网站。")
-    if state.get("next_retry_at") and now < datetime.fromisoformat(state["next_retry_at"]):
+    if not ignore_cooldown and state.get("next_retry_at") and now < datetime.fromisoformat(state["next_retry_at"]):
         return Result("cooldown", "尚未到允许重试的时间。")
     # Persist intent BEFORE the network request; a reboot must not reset the request budget.
     state.update(attempts=state.get("attempts", 0) + 1, last_attempt_at=now.isoformat(),
@@ -424,13 +424,17 @@ def _update(root, fetch, now, force, clock):
         return Result(state["status"], str(exc), 1 if retry else 2)
 
 
-def run_update(root, fetch, now=None, force=False, clock=None):
+def run_update(root, fetch, now=None, force=False, clock=None, ignore_cooldown=False):
+    if ignore_cooldown and not force:
+        raise LocalError("仅人工强制更新可跳过本次等待。")
     root = Path(root).resolve()
     clock = clock or ((lambda: now) if now is not None else now_cst)
     now = clock().astimezone(CST)
     try:
         with RunLock(root):
-            result = _update(root, fetch, now, force, clock)
+            if ignore_cooldown:
+                log(root, now, "manual_override", "人工更新：仅本次跳过十分钟等待，保留次数限制和认证保护。")
+            result = _update(root, fetch, now, force, clock, ignore_cooldown=ignore_cooldown)
             if result.status not in {"already_done", "not_due", "cooldown"}:
                 log(root, now, result.status, result.message)
             return result

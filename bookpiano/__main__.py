@@ -58,7 +58,10 @@ def main(argv=None):
     parser.add_argument("command", choices=["menu", "wizard", "init", "update", "update-local", "status", "demo", "check-ready", "setup", "configure", "connect-feishu"])
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent)
     parser.add_argument("--force", action="store_true", help="当天已成功也刷新；仍遵守每天两次及十分钟间隔")
+    parser.add_argument("--ignore-cooldown", action="store_true", help="人工更新仅本次跳过十分钟等待；须与 --force 同用，次数和认证限制不变")
     args = parser.parse_args(argv)
+    if args.ignore_cooldown and (not args.force or args.command not in {"update", "update-local"}):
+        parser.error("--ignore-cooldown 仅可用于 update/update-local，并须与 --force 同用。")
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=True)
     try:
@@ -109,9 +112,9 @@ def main(argv=None):
                 return fetch_bookings(root, config, day)
             if args.command == "update":
                 from .pipeline import run_pipeline
-                result = run_pipeline(root, fetch, force=args.force)
+                result = run_pipeline(root, fetch, force=args.force, ignore_cooldown=args.ignore_cooldown)
             else:
-                result = core.run_update(root, fetch, force=args.force)
+                result = core.run_update(root, fetch, force=args.force, ignore_cooldown=args.ignore_cooldown)
             print(result.message)
             return result.exit_code
         return 0

@@ -96,9 +96,11 @@ def action(root, command):
             args.append("-IfMissing")
         return run_process(root, args)
     args = [python_path(root), "-m", "bookpiano", command, "--root", root]
-    if command == "manual-update":
+    if command in {"manual-update", "manual-update-now"}:
         args[3] = "update"
         args.append("--force")
+        if command == "manual-update-now":
+            args.append("--ignore-cooldown")
     return run_process(root, args)
 
 
@@ -150,6 +152,7 @@ def menu(root):
         print("3  查看更新状态")
         print("4  打开日志文件夹")
         print("5  高级维护（账号、登录、飞书、定时任务）")
+        print("6  人工立即更新（仅本次跳过十分钟等待）")
         print("0  退出")
         try:
             choice = input("请选择：").strip()
@@ -169,6 +172,9 @@ def menu(root):
                     print("尚未生成日志。")
             elif choice == "5":
                 advanced(root)
+            elif choice == "6":
+                print("仅跳过本次学校查询和飞书写入的等待；每日次数、认证保护仍有效。")
+                action(root, "manual-update-now")
             else:
                 print("请输入菜单中的数字。")
                 continue
